@@ -81,6 +81,53 @@ def get_embedding_visualization(embedding):
     plt.tight_layout()
     return fig
 
+def get_embedding_comparison(split_embedding, server_embedding):
+    """
+    Compare two embeddings and visualize their difference
+    
+    Args:
+        split_embedding: Tensor from split processing
+        server_embedding: Tensor from server-only processing
+    
+    Returns:
+        A figure with comparison visualization
+    """
+    # Convert to numpy arrays
+    split_emb = split_embedding.detach().cpu().numpy().flatten()
+    server_emb = server_embedding.detach().cpu().numpy().flatten()
+    
+    # Calculate difference
+    diff = split_emb - server_emb
+    max_diff = np.max(np.abs(diff))
+    
+    # Create figure with 3 subplots
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 12))
+    
+    # Plot split embedding
+    y_pos = np.arange(len(split_emb))
+    colors1 = plt.cm.RdBu_r((split_emb - split_emb.min()) / (split_emb.max() - split_emb.min()))
+    ax1.barh(y_pos, split_emb, color=colors1)
+    ax1.set_yticks(y_pos[::16])
+    ax1.set_yticklabels([f'{i}' for i in y_pos[::16]])
+    ax1.set_title('Split Processing Embedding')
+    
+    # Plot server embedding
+    colors2 = plt.cm.RdBu_r((server_emb - server_emb.min()) / (server_emb.max() - server_emb.min()))
+    ax2.barh(y_pos, server_emb, color=colors2)
+    ax2.set_yticks(y_pos[::16])
+    ax2.set_yticklabels([f'{i}' for i in y_pos[::16]])
+    ax2.set_title('Server-Only Processing Embedding')
+    
+    # Plot difference
+    colors3 = plt.cm.RdBu_r((diff + max_diff) / (2 * max_diff))
+    ax3.barh(y_pos, diff, color=colors3)
+    ax3.set_yticks(y_pos[::16])
+    ax3.set_yticklabels([f'{i}' for i in y_pos[::16]])
+    ax3.set_title(f'Difference (Max: {max_diff:.6f})')
+    
+    plt.tight_layout()
+    return fig
+
 def fig_to_image(fig):
     """Convert a matplotlib figure to an image for Streamlit"""
     buf = io.BytesIO()

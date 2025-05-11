@@ -27,6 +27,19 @@ class FaceIDModel(nn.Module):
             resnet.avgpool
         )
         
+        # Full model for server-side processing
+        self.full_model = nn.Sequential(
+            resnet.conv1,
+            resnet.bn1,
+            resnet.relu,
+            resnet.maxpool,
+            resnet.layer1,
+            resnet.layer2,
+            resnet.layer3,
+            resnet.layer4,
+            resnet.avgpool
+        )
+        
         # Final embedding projection
         self.embedding = nn.Sequential(
             nn.Flatten(),
@@ -58,6 +71,12 @@ class FaceIDModel(nn.Module):
     def forward_from_intermediate(self, x):
         """Resume processing from intermediate tensor (output from edge device)"""
         x = self.backbone_rest(x)
+        x = self.embedding(x)
+        return x
+        
+    def forward_server_only(self, x):
+        """Run the entire model on the server"""
+        x = self.full_model(x)
         x = self.embedding(x)
         return x
 

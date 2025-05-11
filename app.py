@@ -6,7 +6,7 @@ import os
 import glob
 import numpy as np
 from model import FaceIDModel
-from visualization import get_feature_map_visualization, get_embedding_visualization, fig_to_image
+from visualization import get_feature_map_visualization, get_embedding_visualization, get_embedding_comparison, fig_to_image
 
 # Set page config
 st.set_page_config(page_title="Split Face ID Simulator", layout="wide")
@@ -36,24 +36,30 @@ def get_sample_images():
     return {os.path.basename(f).replace('.jpg', '').replace('_', ' ').title(): f for f in sample_images}
 
 def run_face_id_pipeline(model, image):
-    """Run the split Face ID pipeline on the input image"""
+    """Run both split and server-only Face ID pipelines on the input image"""
     # Preprocess the image
     input_tensor = model.preprocess_image(image)
     
     with torch.no_grad():
-        # Edge device processing (first part)
+        # Split processing route
         edge_output = model.backbone_layer1(input_tensor)
+        split_embedding = model.forward_from_intermediate(edge_output)
+        
+        # Server-only processing route
+        server_embedding = model.forward(input_tensor)
         
         # Print tensor shapes
         st.sidebar.write("#### Tensor Shapes:")
         st.sidebar.write(f"Input: {list(input_tensor.shape)}")
         st.sidebar.write(f"Edge Output: {list(edge_output.shape)}")
+        st.sidebar.write(f"Split Embedding: {list(split_embedding.shape)}")
+        st.sidebar.write(f"Server Embedding: {list(server_embedding.shape)}")
         
-        # Server processing (second part)
-        embedding = model.forward_from_intermediate(edge_output)
-        st.sidebar.write(f"Final Embedding: {list(embedding.shape)}")
+        # Calculate max difference
+        max_diff = torch.max(torch.abs(split_embedding - server_embedding)).item()
+        st.sidebar.write(f"Max Difference: {max_diff:.6f}")
         
-        return edge_output, embedding
+        return edge_output, split_embedding, server_embedding
 
 def main():
     # Create data directory
@@ -121,7 +127,7 @@ def main():
         if process_button:
             with st.spinner("Processing..."):
                 # Run the pipeline
-                edge_output, embedding = run_face_id_pipeline(model, image)
+                edge_output, split_embedding, server_embedding = run_face_id_pipeline(model, image)
                 
                 # Display feature maps in the middle column
                 with col2:
@@ -136,11 +142,21 @@ def main():
                         full_fig = get_feature_map_visualization(edge_output, full_view=True)
                         st.pyplot(full_fig)
                 
-                # Display embedding in the right column
+                # Display embedding comparison in the right column
                 with col3:
-                    st.subheader("Server Output (128D Embedding)")
-                    fig = get_embedding_visualization(embedding)
-                    st.pyplot(fig)
+                    st.subheader("Embedding Comparison")
+                    comparison_fig = get_embedding_comparison(split_embedding, server_embedding)
+                    st.pyplot(comparison_fig)
+                    
+                    # Add explanation about the comparison
+                    st.markdown("""
+                    **Comparison Explanation:**
+                    - **Top**: Embedding from split processing (edge + server)
+                    - **Middle**: Embedding from server-only processing
+                    - **Bottom**: Difference between the two embeddings
+                    
+                    The difference should be very small (close to zero) since both routes perform the same operations.
+                    """)
     else:
         st.info("Please upload an image or select a sample to start.")
         
@@ -154,6 +170,12 @@ def main():
         - **Server**: Remaining layers and embedding generation
         
         The model uses ResNet18 pretrained on ImageNet as a backbone.
+        
+        The app now compares two processing routes:
+        1. **Split Processing**: First part on edge, second part on server
+        2. **Server-Only Processing**: Everything runs on the server
+        
+        Both routes should produce identical results.
         """)
 
 if __name__ == "__main__":
