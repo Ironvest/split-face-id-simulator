@@ -36,12 +36,16 @@ class FaceIDModel:
         self.edge_layers = list(self.model.children())[:self.split_idx + 1]
         self.server_layers = list(self.model.children())[self.split_idx + 1:]
         
-        # Create edge and server models
-        self.edge_model = nn.Sequential(*self.edge_layers)
-        self.server_model = nn.Sequential(*self.server_layers)
-        
         # Add projection layer for face embedding
         self.projection = nn.Linear(512, 128)
+        
+        # Create edge and server models
+        self.edge_model = nn.Sequential(*self.edge_layers)
+        self.server_model = nn.Sequential(
+            *self.server_layers,
+            nn.Flatten(),
+            self.projection
+        )
         
         # Create full model for server-only processing
         self.full_model = nn.Sequential(
