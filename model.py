@@ -2,84 +2,92 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
+from torchvision import transforms as torch_transforms
+from PIL import Image
 
-class FaceIDModel(nn.Module):
-    def __init__(self, embedding_dim=128):
-        super(FaceIDModel, self).__init__()
+class FaceIDModel:
+    def __init__(self, split_point='conv1'):
+        """
+        Initialize the Face ID model with configurable split point.
         
+        Args:
+            split_point (str): Where to split the model between edge and server.
+                Options: 'conv1', 'layer1', 'layer2', 'layer3', 'layer4'
+        """
         # Load pretrained ResNet18
-        resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         
-        # Split the model: first part runs on edge device
-        self.backbone_layer1 = nn.Sequential(
-            resnet.conv1,
-            resnet.bn1,
-            resnet.relu,
-            resnet.maxpool
-        )
+        # Remove the final fully connected layer
+        self.model = nn.Sequential(*list(self.model.children())[:-1])
         
-        # Rest of the backbone runs on the server
-        self.backbone_rest = nn.Sequential(
-            resnet.layer1,
-            resnet.layer2,
-            resnet.layer3,
-            resnet.layer4,
-            resnet.avgpool
-        )
+        # Define split points
+        self.split_points = {
+            'conv1': 0,
+            'layer1': 4,
+            'layer2': 5,
+            'layer3': 6,
+            'layer4': 7
+        }
         
-        # Full model for server-side processing
+        self.split_point = split_point
+        self.split_idx = self.split_points[split_point]
+        
+        # Split the model into edge and server parts
+        self.edge_layers = list(self.model.children())[:self.split_idx + 1]
+        self.server_layers = list(self.model.children())[self.split_idx + 1:]
+        
+        # Create edge and server models
+        self.edge_model = nn.Sequential(*self.edge_layers)
+        self.server_model = nn.Sequential(*self.server_layers)
+        
+        # Create full model for server-only processing
+        self.full_model = nn.Sequential(*self.model.children())
+        
+        # Set to evaluation mode
+        self.edge_model.eval()
+        self.server_model.eval()
+        self.full_model.eval()
+        
+        # Add projection layer for face embedding
+        self.projection = nn.Linear(512, 128)
+        
+        # Create full model for server-only processing
         self.full_model = nn.Sequential(
-            resnet.conv1,
-            resnet.bn1,
-            resnet.relu,
-            resnet.maxpool,
-            resnet.layer1,
-            resnet.layer2,
-            resnet.layer3,
-            resnet.layer4,
-            resnet.avgpool
-        )
-        
-        # Final embedding projection
-        self.embedding = nn.Sequential(
+            self.model,
             nn.Flatten(),
-            nn.Linear(512, embedding_dim),
-            nn.BatchNorm1d(embedding_dim)
+            self.projection
         )
         
+        # Define image preprocessing pipeline
         self.preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-
-    def forward(self, x):
-        """Full forward pass through the model"""
-        x = self.backbone_layer1(x)
-        x = self.backbone_rest(x)
-        x = self.embedding(x)
-        return x
-
-    def forward_split(self, x):
-        """Split forward pass that returns both intermediate output and final embedding"""
-        edge_output = self.backbone_layer1(x)
-        server_output = self.backbone_rest(edge_output)
-        final_embedding = self.embedding(server_output)
-        return edge_output, final_embedding
-
-    def forward_from_intermediate(self, x):
-        """Resume processing from intermediate tensor (output from edge device)"""
-        x = self.backbone_rest(x)
-        x = self.embedding(x)
-        return x
-        
+    
+    def forward_edge(self, x):
+        """Run the edge device portion of the model."""
+        return self.edge_model(x)
+    
+    def forward_server(self, x):
+        """Run the server portion of the model."""
+        return self.server_model(x)
+    
     def forward_server_only(self, x):
-        """Run the entire model on the server"""
-        x = self.full_model(x)
-        x = self.embedding(x)
-        return x
-
+        """Run the entire model on the server."""
+        return self.full_model(x)
+    
+    def get_tensor_shapes(self, x):
+        """Get tensor shapes at each stage of processing."""
+        shapes = {
+            'input': x.shape,
+            'edge_output': self.forward_edge(x).shape,
+            'server_output': self.forward_server(self.forward_edge(x)).shape,
+            'server_only_output': self.forward_server_only(x).shape
+        }
+        return shapes
+    
     def preprocess_image(self, image):
         """Preprocess an image for the model"""
         return self.preprocess(image).unsqueeze(0)  # Add batch dimension 
