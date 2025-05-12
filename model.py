@@ -12,7 +12,7 @@ class FaceIDModel:
         
         Args:
             split_point (str): Where to split the model between edge and server.
-                Options: 'conv1', 'layer1', 'layer2', 'layer3', 'layer4'
+                Options: 'conv1', 'layer1', 'layer2', 'layer3', 'layer4', 'avgpool'
         """
         # Load pretrained ResNet18
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -26,7 +26,8 @@ class FaceIDModel:
             'layer1': 4,
             'layer2': 5,
             'layer3': 6,
-            'layer4': 7
+            'layer4': 7,
+            'avgpool': 8  # Added avgpool as a split point
         }
         
         self.split_point = split_point

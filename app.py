@@ -39,7 +39,7 @@ def main():
     # Split point selection
     split_point = st.sidebar.selectbox(
         "Select Split Point",
-        ['conv1', 'layer1', 'layer2', 'layer3', 'layer4'],
+        ['conv1', 'layer1', 'layer2', 'layer3', 'layer4', 'avgpool'],
         index=0,
         help="Choose where to split the model between edge and server"
     )
