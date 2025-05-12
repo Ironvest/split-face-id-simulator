@@ -62,4 +62,46 @@ This web application simulates a Face ID processing pipeline that is split betwe
 - Python 3.8+
 - Streamlit
 - PyTorch and torchvision
-- Matplotlib for visualizations 
+- Matplotlib for visualizations
+
+## Discussion
+
+This project demonstrates a novel approach to Face ID systems by splitting the neural network computation between an edge device and a server. This architecture offers several advantages:
+
+1. **Privacy Enhancement**: By performing initial feature extraction on the edge device, raw face images never leave the user's device. Only abstract feature maps are transmitted to the server.
+
+2. **Reduced Bandwidth**: The feature maps sent to the server are typically smaller than the original image, reducing data transmission requirements.
+
+3. **Computational Balance**: The split architecture allows for efficient use of computational resources, with the edge device handling initial processing and the server managing more complex operations.
+
+4. **Security Through Obscurity**: Since the complete model isn't stored on either the edge device or the server alone, it becomes more difficult for attackers to extract or reverse engineer the model.
+
+## Next Steps
+
+The demo could be enhanced with the following features:
+
+1. **Network Analysis**:
+   - Add bandwidth usage metrics to compare data transmission between split and full-server approaches
+   - Implement simulated network latency to demonstrate real-world performance
+   - Visualize data compression ratios of feature maps vs. original images
+
+2. **Security Demonstrations**:
+   - Add visualization of privacy preservation by attempting to reconstruct original images from feature maps
+   - Implement attack simulations to demonstrate the security benefits of split architecture
+   - Add encryption layer for feature map transmission
+
+3. **Performance Optimizations**:
+   - Implement quantization of feature maps for reduced bandwidth
+   - Add support for batched processing
+   - Explore different split points in the network architecture
+
+4. **User Experience**:
+   - Add real-time webcam support for live demonstrations
+   - Implement face detection pre-processing
+   - Add support for comparing multiple face embeddings
+   - Include face verification/matching demonstrations
+
+5. **Educational Features**:
+   - Add interactive explanations of each processing stage
+   - Visualize attention maps and layer activations
+   - Include performance metrics and system resource usage statistics 
