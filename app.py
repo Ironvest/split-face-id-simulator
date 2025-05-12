@@ -1,182 +1,168 @@
 import streamlit as st
 import torch
-import torchvision
 from PIL import Image
-import os
-import glob
 import numpy as np
 from model import FaceIDModel
-from visualization import get_feature_map_visualization, get_embedding_visualization, get_embedding_comparison, fig_to_image
-
-# Set page config
-st.set_page_config(page_title="Split Face ID Simulator", layout="wide")
-
-@st.cache_resource
-def load_model():
-    """Load the Face ID model with caching for performance"""
-    model = FaceIDModel(embedding_dim=128)
-    model.eval()
-    return model
-
-def create_data_directory():
-    """Create data directory if it doesn't exist"""
-    os.makedirs('data', exist_ok=True)
-    os.makedirs('data/sample_faces', exist_ok=True)
-
-def load_image(image_file):
-    """Load an image from file"""
-    if image_file is not None:
-        img = Image.open(image_file).convert('RGB')
-        return img
-    return None
+import visualization as viz
+import os
+import time
 
 def get_sample_images():
-    """Get list of sample face images"""
-    sample_images = glob.glob("data/sample_faces/*.jpg")
-    return {os.path.basename(f).replace('.jpg', '').replace('_', ' ').title(): f for f in sample_images}
+    """Get list of sample face images."""
+    sample_dir = 'data/sample_faces'
+    return [f for f in os.listdir(sample_dir) if f.endswith(('.jpg', '.jpeg', '.png'))]
 
-def run_face_id_pipeline(model, image):
-    """Run both split and server-only Face ID pipelines on the input image"""
-    # Preprocess the image
-    input_tensor = model.preprocess_image(image)
-    
-    with torch.no_grad():
-        # Split processing route
-        edge_output = model.backbone_layer1(input_tensor)
-        split_embedding = model.forward_from_intermediate(edge_output)
-        
-        # Server-only processing route
-        server_embedding = model.forward(input_tensor)
-        
-        # Print tensor shapes
-        st.sidebar.write("#### Tensor Shapes:")
-        st.sidebar.write(f"Input: {list(input_tensor.shape)}")
-        st.sidebar.write(f"Edge Output: {list(edge_output.shape)}")
-        st.sidebar.write(f"Split Embedding: {list(split_embedding.shape)}")
-        st.sidebar.write(f"Server Embedding: {list(server_embedding.shape)}")
-        
-        # Calculate max difference
-        max_diff = torch.max(torch.abs(split_embedding - server_embedding)).item()
-        st.sidebar.write(f"Max Difference: {max_diff:.6f}")
-        
-        return edge_output, split_embedding, server_embedding
+def load_image(image_file):
+    """Load and preprocess an image file."""
+    if image_file is not None:
+        return Image.open(image_file)
+    return None
+
+def format_size(size_bytes):
+    """Format size in bytes to human readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.2f} TB"
 
 def main():
-    # Create data directory
-    create_data_directory()
+    st.title("Split Face ID Simulator")
     
-    # Load the model
-    model = load_model()
+    # Initialize session state
+    if 'model' not in st.session_state:
+        st.session_state.model = FaceIDModel()
     
-    # App header
-    st.title("Split Face ID Processing Simulator")
-    st.write("""
-    This app demonstrates a Face ID processing pipeline split between an edge device and a backend server.
-    Upload a face image or select a sample to see the processing steps.
-    """)
+    # Sidebar controls
+    st.sidebar.header("Controls")
     
-    # Sidebar inputs
-    st.sidebar.title("Input")
+    # Split point selection
+    split_point = st.sidebar.selectbox(
+        "Select Split Point",
+        ['conv1', 'layer1', 'layer2', 'layer3', 'layer4'],
+        index=0,
+        help="Choose where to split the model between edge and server"
+    )
     
-    # Input selection tabs
-    input_method = st.sidebar.radio("Select input method", ["Upload Image", "Use Sample Image"])
+    # Update model if split point changes
+    if split_point != st.session_state.model.split_point:
+        st.session_state.model = FaceIDModel(split_point=split_point)
     
-    # Initialize the image
-    image = None
-    
-    if input_method == "Upload Image":
-        # File uploader
-        uploaded_file = st.sidebar.file_uploader("Upload a face image", type=["png", "jpg", "jpeg"])
-        if uploaded_file is not None:
-            image = load_image(uploaded_file)
-    else:
-        # Sample image selection
+    # Image input options
+    use_sample = st.sidebar.checkbox("Use sample image")
+    if use_sample:
         sample_images = get_sample_images()
-        
-        if sample_images:
-            selected_sample = st.sidebar.selectbox(
-                "Select a sample face", 
-                list(sample_images.keys())
-            )
-            
-            if selected_sample:
-                image_path = sample_images[selected_sample]
-                image = Image.open(image_path).convert('RGB')
-                st.sidebar.info(f"Selected: {selected_sample}")
-        else:
-            st.sidebar.warning("No sample images found in data/sample_faces directory")
-            
-            # Create a default sample image if no samples exist
-            sample_image = Image.new('RGB', (224, 224), color=(73, 109, 137))
-            image = sample_image
-            # Save for future use
-            sample_image.save(os.path.join("data", "sample.jpg"))
-    
-    # Main content layout - three columns for the three processing stages
-    col1, col2, col3 = st.columns(3)
-    
-    # Display the input image if available
-    if image is not None:
-        with col1:
-            st.subheader("Original Image")
-            st.image(image, caption="Input Face Image", use_column_width=True)
-            
-            # Process button below the image
-            process_button = st.button("Run Face ID")
-        
-        if process_button:
-            with st.spinner("Processing..."):
-                # Run the pipeline
-                edge_output, split_embedding, server_embedding = run_face_id_pipeline(model, image)
-                
-                # Display feature maps in the middle column
-                with col2:
-                    st.subheader("Edge Device Output")
-                    
-                    # Default view with 4 channels
-                    fig = get_feature_map_visualization(edge_output, num_channels=4, full_view=False)
-                    st.pyplot(fig)
-                    
-                    # Expandable section for all channels
-                    with st.expander("Show all 64 feature maps"):
-                        full_fig = get_feature_map_visualization(edge_output, full_view=True)
-                        st.pyplot(full_fig)
-                
-                # Display embedding comparison in the right column
-                with col3:
-                    st.subheader("Embedding Comparison")
-                    comparison_fig = get_embedding_comparison(split_embedding, server_embedding)
-                    st.pyplot(comparison_fig)
-                    
-                    # Add explanation about the comparison
-                    st.markdown("""
-                    **Comparison Explanation:**
-                    - **Top**: Embedding from split processing (edge + server)
-                    - **Middle**: Embedding from server-only processing
-                    - **Bottom**: Difference between the two embeddings
-                    
-                    The difference should be very small (close to zero) since both routes perform the same operations.
-                    """)
+        selected_image = st.sidebar.selectbox("Select sample image", sample_images)
+        if selected_image:
+            image_path = os.path.join('data/sample_faces', selected_image)
+            image = Image.open(image_path)
     else:
-        st.info("Please upload an image or select a sample to start.")
+        uploaded_file = st.sidebar.file_uploader("Upload a face image", type=['jpg', 'jpeg', 'png'])
+        image = load_image(uploaded_file)
+    
+    if image is not None:
+        # Display original image
+        st.image(image, caption="Original Image", use_column_width=True)
         
-    # Add app description in the sidebar
-    with st.sidebar:
-        st.markdown("---")
-        st.subheader("About")
-        st.markdown("""
-        This simulator demonstrates how Face ID processing can be split between:
-        - **Edge Device**: Initial convolutional layers
-        - **Server**: Remaining layers and embedding generation
+        # Process image
+        if st.sidebar.button("Run Face ID"):
+            # Start timing
+            start_time = time.time()
+            
+            # Preprocess image
+            input_tensor = st.session_state.model.preprocess_image(image)
+            
+            # Get tensor shapes
+            shapes = st.session_state.model.get_tensor_shapes(input_tensor)
+            
+            # Process through edge device
+            edge_start = time.time()
+            edge_output = st.session_state.model.forward_edge(input_tensor)
+            edge_time = time.time() - edge_start
+            
+            # Process through server
+            server_start = time.time()
+            split_embedding = st.session_state.model.forward_server(edge_output)
+            server_time = time.time() - server_start
+            
+            # Process through server-only path
+            server_only_start = time.time()
+            server_embedding = st.session_state.model.forward_server_only(input_tensor)
+            server_only_time = time.time() - server_only_start
+            
+            total_time = time.time() - start_time
+            
+            # Store results in session state
+            st.session_state.edge_output = edge_output
+            st.session_state.split_embedding = split_embedding
+            st.session_state.server_embedding = server_embedding
+            st.session_state.shapes = shapes
+            st.session_state.edge_time = edge_time
+            st.session_state.server_time = server_time
+            st.session_state.total_time = total_time
+            st.session_state.has_results = True
         
-        The model uses ResNet18 pretrained on ImageNet as a backbone.
-        
-        The app now compares two processing routes:
-        1. **Split Processing**: First part on edge, second part on server
-        2. **Server-Only Processing**: Everything runs on the server
-        
-        Both routes should produce identical results.
-        """)
+        # Display results if available
+        if st.session_state.get('has_results', False):
+            # Edge Device Output
+            st.subheader("Edge Device Output")
+            
+            # Show feature maps
+            edge_viz = viz.get_feature_map_visualization(st.session_state.edge_output)
+            st.image(edge_viz, use_column_width=True)
+            st.text(f"Tensor shape: {st.session_state.shapes['edge_output']}")
+            
+            # Comparison
+            st.subheader("Comparison: Split vs Full Server Processing")
+            comparison_viz = viz.get_embedding_comparison(
+                st.session_state.split_embedding,
+                st.session_state.server_embedding
+            )
+            st.image(comparison_viz, use_column_width=True)
+            
+            # Metrics
+            st.subheader("Metrics")
+            
+            # Create a 2x3 grid for all metrics
+            cols = st.columns(3)
+            
+            # Row 1: Similarity metrics
+            with cols[0]:
+                cosine_sim = torch.nn.functional.cosine_similarity(
+                    st.session_state.split_embedding.flatten(),
+                    st.session_state.server_embedding.flatten(),
+                    dim=0
+                ).item()
+                st.metric("Cosine Similarity", f"{cosine_sim:.6f}")
+            
+            with cols[1]:
+                l2_dist = torch.norm(st.session_state.split_embedding - st.session_state.server_embedding).item()
+                st.metric("L2 Distance", f"{l2_dist:.6f}")
+            
+            with cols[2]:
+                st.metric("Edge Processing", f"{st.session_state.edge_time*1000:.2f} ms")
+            
+            # Row 2: Processing and transfer metrics
+            cols = st.columns(3)
+            with cols[0]:
+                st.metric("Server Processing", f"{st.session_state.server_time*1000:.2f} ms")
+            
+            with cols[1]:
+                st.metric("Total Time", f"{st.session_state.total_time*1000:.2f} ms")
+            
+            with cols[2]:
+                data_size = np.prod(st.session_state.shapes['edge_output']) * 4  # 4 bytes per float32
+                st.metric("Data Transfer Size", format_size(data_size))
+            
+            # Display split point information
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("Split Point Information")
+            st.sidebar.markdown(f"""
+            - **Current Split**: {split_point}
+            - **Edge Device Layers**: {len(st.session_state.model.edge_layers)} layers
+            - **Server Layers**: {len(st.session_state.model.server_layers)} layers
+            - **Data Transfer Size**: {format_size(data_size)}
+            """)
 
 if __name__ == "__main__":
-    main() 
+    main()
