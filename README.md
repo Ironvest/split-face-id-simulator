@@ -1,15 +1,68 @@
 # Split Face ID Simulator
 
-This web application simulates a Face ID processing pipeline that is split between an edge device and a backend server. The app visually demonstrates image transformations and feature maps at each processing stage.
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://split-face-id-simulator.streamlit.app/)
+
+Try the live demo: [Split Face ID Simulator](https://split-face-id-simulator.streamlit.app/)
+
+This project simulates a split Face ID system that processes face recognition tasks between edge devices and a server. It demonstrates how different split points in a neural network affect processing time, data transfer, and accuracy.
 
 ## Features
 
-- **Split Processing Pipeline**: Simulates running the initial convolution block on an edge device and the remaining blocks on a backend server
-- **Visualizations**:
-  - Original image display
-  - Feature map visualization from edge device processing
-  - Final 128D face embedding visualization
-- **Tensor Shapes**: Shows tensor dimensions at each step of the pipeline
+- Simulates processing face images through a ResNet18 model split between edge and server
+- Configurable split points: conv1, layer1, layer2, layer3, layer4
+- Visualizes feature maps from edge processing
+- Compares results between split processing and full server processing
+- Measures processing time and data transfer metrics
+- Includes sample face images for testing
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.8+
+- PyTorch
+- Streamlit
+- Other dependencies listed in `requirements.txt`
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/Ironvest/split-face-id-simulator.git
+cd split-face-id-simulator
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Run the app:
+```bash
+streamlit run app.py
+```
+
+## Usage
+
+1. Select a split point from the sidebar (where to divide processing between edge and server)
+2. Upload a face image or use one of the provided sample images
+3. Click "Run Face ID" to process the image
+4. View the results:
+   - Feature maps from edge processing
+   - Comparison between split and server-only processing
+   - Processing time metrics
+   - Data transfer metrics
+
+## Project Structure
+
+- `app.py`: Main Streamlit application
+- `model.py`: Face ID model implementation with split processing
+- `visualization.py`: Visualization utilities for feature maps and embeddings
+- `data/sample_faces/`: Sample face images for testing
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Model Architecture
 
