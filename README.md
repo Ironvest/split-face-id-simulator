@@ -39,21 +39,42 @@ Design and implement a Face ID pipeline split between an edge device and a serve
 
 This app demonstrates different possible split points in the neural network:
 
-1. **After first conv block (conv1 → maxpool)**
+1. **After conv1** (first convolutional layer)
    - Output shape: [64, 112, 112]
    - Size: ~800 KB (float32)
    - Too large, not feasible for transmission or visualization
+   
+2. **After bn1** (batch normalization)
+   - Output shape: [64, 112, 112]
+   - Size: ~800 KB (float32)
+   
+3. **After relu** (ReLU activation)
+   - Output shape: [64, 112, 112]
+   - Size: ~800 KB (float32)
+   
+4. **After maxpool** (max pooling layer)
+   - Output shape: [64, 56, 56]
+   - Size: ~200 KB (float32)
 
-2. **After layer1**: [64, 56, 56] — ~200 KB
+5. **After layer1** (first residual block)
+   - Output shape: [64, 56, 56] 
+   - Size: ~200 KB (float32)
 
-3. **After layer2**: [128, 28, 28] — ~100 KB  
+6. **After layer2** (second residual block)
+   - Output shape: [128, 28, 28]
+   - Size: ~100 KB (float32)
 
-4. **After layer3**: [256, 14, 14] — ~50 KB
+7. **After layer3** (third residual block)
+   - Output shape: [256, 14, 14]
+   - Size: ~50 KB (float32)
 
-5. **After layer4**: [512, 7, 7] — ~25 KB
-   - Smaller, but still heavy for low-latency transmission
+8. **After layer4** (fourth residual block)
+   - Output shape: [512, 7, 7]
+   - Size: ~25 KB (float32)
+   - Still heavy for low-latency transmission
 
-6. ✅ **After avgpool**: [512]
+9. ✅ **After avgpool** (global average pooling)
+   - Output shape: [512]
    - Size: 2 KB (float32)
    - Easily transmittable and storable
    - Server can perform final projection (fc)
