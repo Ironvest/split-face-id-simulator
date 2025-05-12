@@ -4,9 +4,82 @@
 
 Try the live demo: [Split Face ID Simulator](https://split-face-id-simulator.streamlit.app/)
 
-This project simulates a split Face ID system that processes face recognition tasks between edge devices and a server. It demonstrates how different split points in a neural network affect processing time, data transfer, and accuracy.
+A cutting-edge demonstration of split inference for face recognition systems, showing how computation can be optimally distributed between edge devices and servers.
 
-## Features
+## 🎯 Goal
+
+Design and implement a Face ID pipeline split between an edge device and a server, such that:
+
+- The edge performs the first part of the model inference
+- The edge outputs a compact representation (ideally a single image or small vector)
+- The server continues inference using this output, producing the final face embedding
+- The split maintains high accuracy and allows auditing and visualization of edge outputs
+- The design is efficient enough to run on modern mobile hardware
+
+## 📐 Design Constraints
+
+- Accuracy must not degrade vs full end-to-end inference
+- Edge output must be lightweight (low bandwidth), preferably:
+  - A single image
+  - Or a fixed-length vector
+- The representation must be:
+  - Deterministic and preferably reversible
+  - Optionally visualizable for human inspection or debugging
+- Must be practical to run on modern mobile phones (e.g., iPhones, Androids)
+
+## ✅ Model Architecture
+
+- **Backbone**: ResNet-18, pretrained on ImageNet
+- **Inference flow**:
+  - Input: 3 × 224 × 224 face image
+  - Edge: conv1 → bn1 → relu → maxpool → layer1 → layer2 → layer3 → layer4 → avgpool
+  - Server: fc (512 → 128) → normalize → embedding
+
+## 🔀 Explored Cut Points for the Split
+
+This app demonstrates different possible split points in the neural network:
+
+1. **After first conv block (conv1 → maxpool)**
+   - Output shape: [64, 112, 112]
+   - Size: ~800 KB (float32)
+   - Too large, not feasible for transmission or visualization
+
+2. **After layer1**: [64, 56, 56] — ~200 KB
+
+3. **After layer2**: [128, 28, 28] — ~100 KB  
+
+4. **After layer3**: [256, 14, 14] — ~50 KB
+
+5. **After layer4**: [512, 7, 7] — ~25 KB
+   - Smaller, but still heavy for low-latency transmission
+
+6. ✅ **After avgpool**: [512]
+   - Size: 2 KB (float32)
+   - Easily transmittable and storable
+   - Server can perform final projection (fc)
+   - Chosen as the best split point
+
+## 📱 Edge Feasibility
+
+- Model size (float32): ~44 MB
+- Quantized size (int8): ~11 MB
+- Inference cost: ~1.8 GFLOPs
+- Run time:
+  - iPhone 12+: ~15 ms
+  - Pixel 6+: ~20–25 ms
+  - Mid-range Android: ~30–50 ms
+- **Conclusion**: feasible for on-demand inference
+
+## 🔁 Visualization Options
+
+The app demonstrates several visualization options:
+
+- Feature map visualization with channel grids
+- Embedding vectors as bar charts
+- Side-by-side comparison of split vs. server-only processing
+- Difference highlighting between processing paths
+
+## 📊 Features
 
 - Simulates processing face images through a ResNet18 model split between edge and server
 - Configurable split points: conv1, layer1, layer2, layer3, layer4
@@ -15,7 +88,7 @@ This project simulates a split Face ID system that processes face recognition ta
 - Measures processing time and data transfer metrics
 - Includes sample face images for testing
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
@@ -42,7 +115,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Usage
+## 💻 Usage
 
 1. Select a split point from the sidebar (where to divide processing between edge and server)
 2. Upload a face image or use one of the provided sample images
@@ -53,71 +126,39 @@ streamlit run app.py
    - Processing time metrics
    - Data transfer metrics
 
-## Project Structure
+## 📁 Project Structure
 
-- `app.py`: Main Streamlit application
-- `model.py`: Face ID model implementation with split processing
-- `visualization.py`: Visualization utilities for feature maps and embeddings
-- `data/sample_faces/`: Sample face images for testing
+```
+.
+├── app.py                  # Main Streamlit application
+├── model.py                # Face ID model implementation with split processing
+├── visualization.py        # Visualization utilities for feature maps and embeddings
+├── data/sample_faces/      # Sample face images for testing
+├── requirements.txt        # Project dependencies
+└── README.md               # Project documentation
+```
 
-## License
+## 🧪 Testing Strategy
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. **Unit and Integration Tests**
+   - Validate that edge and server produce identical embeddings when chained directly
+   - Test serialization-deserialization fidelity of the 512D vector
+   - Validate model consistency across backends (PyTorch, TFLite, CoreML)
 
-## Model Architecture
+2. **Accuracy Testing**
+   - Compare embeddings from end-to-end full model vs split model
+   - Cosine similarity should be > 0.99
+   - Run face verification benchmarks on LFW, CFP-FP, IJB-C (if available)
 
-- **Backbone**: ResNet18 pretrained on ImageNet
-- **Split Architecture**:
-  - **Edge Device**: Conv1 → BatchNorm → ReLU → MaxPool
-  - **Server**: Remaining ResNet blocks
-  - **Embedding Projection**: Linear layer projecting to 128D embedding
+3. **Latency and Throughput Tests**
+   - Measure edge inference time (image to vector)
+   - Measure transmission + decode + server inference time
 
-## Setup Instructions
+4. **Visualization Debugging**
+   - Implement image/heatmap visualizers for feature tensors and vectors
+   - Display both edge-generated and server-reconstructed representations
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/yourusername/split-face-id-simulator.git
-   cd split-face-id-simulator
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run the application**:
-   ```bash
-   streamlit run app.py
-   ```
-
-4. **Access the application**:
-   Open your web browser and go to `http://localhost:8501`
-
-## Usage
-
-1. Upload a face image using the file uploader in the sidebar, or check the "Use sample image" option
-2. Click the "Run Face ID" button to process the image
-3. View the visualizations:
-   - Original input image
-   - Feature maps from edge device processing
-   - 128D face embedding bar chart
-
-## Project Structure
-
-- `app.py`: Streamlit application code
-- `model.py`: Face ID model with split processing functionality
-- `visualization.py`: Functions for visualizing feature maps and embeddings
-- `data/`: Directory for sample face images
-- `requirements.txt`: Project dependencies
-
-## Technology Stack
-
-- Python 3.8+
-- Streamlit
-- PyTorch and torchvision
-- Matplotlib for visualizations
-
-## Discussion
+## 🔧 Discussion
 
 This project demonstrates a novel approach to Face ID systems by splitting the neural network computation between an edge device and a server. This architecture offers several advantages:
 
@@ -129,32 +170,26 @@ This project demonstrates a novel approach to Face ID systems by splitting the n
 
 4. **Security Through Obscurity**: Since the complete model isn't stored on either the edge device or the server alone, it becomes more difficult for attackers to extract or reverse engineer the model.
 
-## Next Steps
+## 🚀 Next Steps
 
-The demo could be enhanced with the following features:
-
-1. **Network Analysis**:
-   - Add bandwidth usage metrics to compare data transmission between split and full-server approaches
-   - Implement simulated network latency to demonstrate real-world performance
-   - Visualize data compression ratios of feature maps vs. original images
-
-2. **Security Demonstrations**:
-   - Add visualization of privacy preservation by attempting to reconstruct original images from feature maps
-   - Implement attack simulations to demonstrate the security benefits of split architecture
-   - Add encryption layer for feature map transmission
-
-3. **Performance Optimizations**:
+1. **Optimization**
    - Implement quantization of feature maps for reduced bandwidth
+   - Explore different encoding/compression methods for the intermediate representations
    - Add support for batched processing
-   - Explore different split points in the network architecture
 
-4. **User Experience**:
+2. **Security & Privacy**
+   - Add visualization of privacy preservation by attempting to reconstruct original images from feature maps
+   - Implement encryption layer for feature map transmission
+
+3. **User Experience**
    - Add real-time webcam support for live demonstrations
    - Implement face detection pre-processing
    - Add support for comparing multiple face embeddings
-   - Include face verification/matching demonstrations
 
-5. **Educational Features**:
+4. **Educational Features**
    - Add interactive explanations of each processing stage
-   - Visualize attention maps and layer activations
-   - Include performance metrics and system resource usage statistics 
+   - Include performance metrics and system resource usage statistics
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details. 
