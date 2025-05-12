@@ -40,14 +40,6 @@ class FaceIDModel:
         self.edge_model = nn.Sequential(*self.edge_layers)
         self.server_model = nn.Sequential(*self.server_layers)
         
-        # Create full model for server-only processing
-        self.full_model = nn.Sequential(*self.model.children())
-        
-        # Set to evaluation mode
-        self.edge_model.eval()
-        self.server_model.eval()
-        self.full_model.eval()
-        
         # Add projection layer for face embedding
         self.projection = nn.Linear(512, 128)
         
@@ -57,6 +49,11 @@ class FaceIDModel:
             nn.Flatten(),
             self.projection
         )
+        
+        # Set to evaluation mode
+        self.edge_model.eval()
+        self.server_model.eval()
+        self.full_model.eval()
         
         # Define image preprocessing pipeline
         self.preprocess = transforms.Compose([
